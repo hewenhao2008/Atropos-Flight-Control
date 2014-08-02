@@ -1,0 +1,43 @@
+﻿<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+	<meta http-equiv="content-type" content="text/html;charset=utf-8" />
+	<script type='text/javascript' src='prototype.js'></script>
+</head>
+<body>
+<div id="imagecontainer" style="position:absolute;left:0px;top:0px" 	height="480" width="640"></div>
+<script type="text/javascript">
+  
+  var isopen = 1174975860;
+  var timerval=60;
+  var ruta="http://zeratul:zeratul@192.168.250.111/image.jpg?a=0&cachebust="
+  function loadnextimage(){
+     isopen++;
+     tmpimage.src=ruta+isopen;
+  }
+  function setuptimer(){
+     setTimeout("loadnextimage()", timerval);
+  }
+  var isopen=Math.round(1000000+(Math.random() * 1000000));
+  tmpimage = new Image();
+  var first = 1;
+  function doimage() { 
+     document.images.webcam.src=tmpimage.src;
+     setuptimer();
+  }
+  function firstimage() { 
+     if (first == 1) {
+	 first=0;
+	 isopen++;
+	 tmpimage.onload=doimage; 
+	 tmpimage.onerror=doimage; 
+	 tmpimage.src=ruta+isopen; 
+	 } 
+  }
+  $('imagecontainer').update('<IMG border=0 style="height:480px;width:640px" SRC="'+ruta+isopen+'" name=webcam id=webcam onload="firstimage()">');
+	
+</script>
+
+
+</body>
