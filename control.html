@@ -1,0 +1,1236 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+	<title>Control TCC Atropos</title>
+	<meta http-equiv="content-type" content="text/html;charset=utf-8" />
+	<style type="text/css">
+			.led3 {position:relative;text-align:center;background-color:red;margin:0px;padding:0px;float:left;height:15px;width:30px;border:1px solid white;color:white;}
+			.led5 {position:relative;text-align:center; background-color:red;margin:0px;padding:0px;float:left;height:50px;width:50px;border:1px solid white;color:white;}
+			.btn  {cursor:hand; cursor:pointer;text-align:center;background-color:#0080FF;margin:0px;padding:0px;float:left;height:30px;width:100px;border:1px solid white;color:white;}
+			.motorValue {padding:0px;height:10px;width:175px;position:relative;top:-14px;color:white;z-index:9999999;text-align:center;}
+			.motorLabel {padding:0px;height:10px;width:175px;position:relative;top:-24px;color:yellow;z-index:9999999;text-align:left;}
+			.motorPanel {padding:0px;height:10px;width:175px;border:1px solid grey;color:grey}
+			.motorBorder{padding:0px;height:10px;width:0px;border:0px;background-color:grey}
+			.link{cursor:hand; cursor:pointer}
+			.ledPanel{position:absolute;  left:10px; top:55px; z-index:1}
+			.h28{height:28px;}
+			.generalBody{background:black; color:#80FF00; font-family:Arial; font-size:10px}
+			.flecha-derecha {
+				width: 0; 
+				height: 0; 
+				border-top: 15px solid transparent;
+				border-bottom: 15px solid transparent;
+				border-left: 15px solid white;
+			}
+			.flecha-izquierda {
+				width: 0; 
+				height: 0; 
+				border-top: 15px solid transparent;
+				border-bottom: 15px solid transparent; 
+				border-right:15px solid white; 
+			}
+			.flecha-arriba {
+				width: 0; 
+				height: 0; 
+				border-left: 15px solid transparent;
+				border-right: 15px solid transparent;
+				border-bottom: 15px solid white;
+			}
+			.flecha-abajo {
+				width: 0; 
+				height: 0; 
+				border-left: 15px solid transparent;
+				border-right: 15px solid transparent;
+				border-top: 15px solid white;
+			}			
+	</style>
+	
+	
+	<script type='text/javascript' src='prototype.js'></script>
+	<script type='text/javascript' src='dataStructs.js'></script>
+	<script type='text/javascript' src='canvasUtils.js'></script>
+	<script type='text/javascript'>
+        var masteralarmtrack="masteralarm.ogg"
+        var battalarmtrack="battalarm.ogg"
+		var divTele=0;
+		var pid=0;
+		var head_hold=0;
+		var intervalCPU=-1;		
+		var gpsSizeView=140;
+		var scaleView=gpsSizeView/2;
+		var scaleGPS=0.000001;	
+		var showDebug=0;
+		var showIMU=0;
+		var rcv=0;
+		var snd=0;
+				
+		var failsafe=0;
+		var autopilot=0;
+		var statusGPS=0;
+		var debugText="";
+		var lockExperimental=1;
+			
+
+		var numQ=0;
+		var lastQuery="";
+		var lastKeyPressed=0;
+		var EnviarActESC=1;
+		
+		var aux=0;
+		var auxH=0;
+		var batteryFactor=0.203;
+		var amperageFactor=0.3515625;
+		var minVoltage=9.2;
+		var toDeg=180/Math.PI;
+		var toRad=Math.PI/180;
+		var radFactor=toRad*1000000;
+		
+		var degPRStep=10;
+		var degYStep=0.5;//velocidad angular en radianes/seg
+		
+		var miliAltStep=1;
+		var accelStep=0.5;
+		var accelStart=-200;
+		
+		var arrayData;
+		var inIMU= 	new IMU(0,0,0,0,0,0);
+		var inTARGET = new IMU(0,0,0,0,0,0);
+		var pidAla = new PID(0,0,0,0,0);
+		var pidCab = new PID(0,0,0,0,0);
+		var pidGin = new PID(0,0,0,0,0);
+		
+		var inGPS=  new GPS (0,0,0,0);
+		var targetGPS=  new GPS (0,0,0,0);
+		var mousemoveGPS=  new GPS (0,0,0,0);
+		var mouseclickGPS=  new GPS (0,0,0,0);
+		var bumper0=0;
+		var bumper1=0;
+		var ESC=0;
+		var batt;
+		var clickGPSPanelX=0;
+		var clickGPSPanelY=0;
+		var moveGPSPanelX=0;
+		var moveGPSPanelY=0;		
+		
+		var canvasPIDGain=1
+		var accel=accelStart;
+		var toggleSend="";
+		
+		var global_scale_raw=10;
+		var MIN_DATA=15;
+		var parsedData="";
+		var lastConsole="NO DATA";
+		function detScale(detail, factor){
+			return (-detail)*factor;
+		}
+		function refreshComet(){
+			$('icomet').contentWindow.location.reload();
+		}
+		function refreshCamera(){
+			$('imageframe').contentWindow.location.reload();
+		}
+		function rueda(event){
+			var delta = 0;
+			if (lockExperimental==1){
+				return 0;
+			}
+			//if(ESC==1){
+				if (!event) event = window.event;
+				delta = event.detail;
+				accel=accel+detScale(delta,accelStep);
+				if (Math.abs(accel)<accelStep){
+					accel=0;
+				}
+				if(accel>(-accelStart)){accel=-accelStart;}
+				if(accel<(accelStart)){accel=accelStart;}
+				query('L'+(Math.abs(accelStart*1000000)+Math.round(accel*1000000)));				
+			//}
+		}
+		function cpuOK(){
+			$('cpu').setStyle({color: 'white'});
+			mensajeConsola("Rendimiento Timing IMU normal");
+		}
+        	function apagarSnd(){
+			$('snd').setStyle({backgroundColor: 'black'});
+			
+		}
+		function apagarRcv(){
+			$('rcv').setStyle({backgroundColor: 'black'});
+		}
+		function falloRcv(){
+			mensajeConsola("Recepción telemetría interrumpida. Reintentando conexión");
+			$('rcv').setStyle({backgroundColor: 'red'});
+			refreshComet();
+			
+			
+		}
+		function query(q){
+			
+			var url1="/cgi-bin/ajaxinput?";
+		
+			var target="";
+			if (q!=lastQuery){
+				$('snd').setStyle({backgroundColor: 'orange'});
+				setTimeout('apagarSnd()',100);
+				lastQuery=q;
+				target=url1+q;		
+				new Ajax.Request(target);
+				
+			}
+		}
+
+		function divRotation(divId, rads){
+            		var rotation='rotate('+(Math.round(rads*toDeg*100)/100)+'deg)';
+           		$(divId).setStyle({ '-webkit-transform': rotation});
+		        $(divId).setStyle({ '-moz-transform': rotation});
+            		$(divId).setStyle({ 'transform': rotation});
+            
+        	}
+		
+		function send(tecla, presion){
+			var order='NOCONF';
+			var val;
+			
+			val=0;
+			/*if ((tecla=='a')&&(presion==1)){order='A';val=-radFactor*degPRStep;}
+			if ((tecla=='a')&&(presion==0)){order='a';val=0;}
+			if ((tecla=='d')&&(presion==1)){order='A';val=radFactor*degPRStep;}
+			if ((tecla=='d')&&(presion==0)){order='a';val=0;}
+			
+			if ((tecla=='w')&&(presion==1)){order='C';val=-radFactor*degPRStep;}
+			if ((tecla=='w')&&(presion==0)){order='c';val=0;}
+			if ((tecla=='s')&&(presion==1)){order='C';val=radFactor*degPRStep;}
+			if ((tecla=='s')&&(presion==0)){order='c';val=0;}
+
+			if ((tecla=='k')&&(presion==1)){order='G';val=radFactor*degYStep;}
+			if ((tecla=='k')&&(presion==0)){order='g';val=0;}
+			if ((tecla=='ñ')&&(presion==1)){order='G';val=-radFactor*degYStep;}
+			if ((tecla=='ñ')&&(presion==0)){order='g';val=0;}
+			
+			if ((tecla=='o')&&(presion==1)){order='L';val=20;}
+			if ((tecla=='o')&&(presion==0)){order='l';val=0;}
+			if ((tecla=='l')&&(presion==1)){order='L';val=-20;}
+			if ((tecla=='l')&&(presion==0)){order='l';val=0;}*/
+			
+			
+			var num1 = new Number(val);
+			num1=num1.toFixed();
+			
+			if (order!='NOCONF'){			
+				query(order+''+num1);			
+			}
+			
+		}	
+		function encender(armar){
+			accel=accelStart;
+			if (armar){
+					if(confirm("Aceptar para activar el control de velocidad")){
+						query('z0');
+						EnviarActESC=0;
+						query('Y1000000');
+						mensajeConsola("Encendido con rearme enviado");
+					}else{
+						mensajeConsola("Encendido cancelado");
+					}
+				
+			}else{
+                query('z0');
+				query('Y1000000');
+				//$('calibrateESC').disabled=false;
+				$('calibrateESC').setStyle({backgroundColor:'#0080FF'});
+				mensajeConsola("Encendido enviado");
+			}
+		}
+		function calibrar(){
+				
+				if (confirm("Desconectar Alimentación ESC. Aceptar para continuar")){
+					query('Z0');
+					mensajeConsola("Envio pulso ESC");
+					alert("Enviado pulso máximo. Conecte alimentación ESC y compruebe comportamiento.");
+					if(confirm("Aceptar para enviar pulso minimo")){
+						query('z0');
+						mensajeConsola("Envio pulso minimo ESC");
+						alert("Desconectar Alimentacion ESC");
+						query('Y0');
+						mensajeConsola("Envio apagado ESC");
+					}
+				}
+			
+		}		
+		function apagar(){
+			var apagar=1;
+			
+			//if (confirm("Confirme apagado motores")){
+			//	apagar=1;
+			//}
+
+			if (apagar){
+				query('Y0');
+			}
+		}
+		document.onkeydown=function(e){
+			var evento = e || window.event;			
+			send(String.fromCharCode(evento.keyCode).toLowerCase(),1);
+        	};
+		document.onkeyup=function(e){
+			var evento = e || window.event;                
+			send(String.fromCharCode(evento.keyCode).toLowerCase(),0);
+			
+        	};
+		
+
+		
+
+		function trunc(val){
+		val=val+"";
+			if(val.indexOf(".",0)<0){
+				return val;
+			}else{
+				return val.split(".")[0];
+			}
+			
+		
+		}
+		
+		function drawIMU(imuData, viewContext, staticContext){
+			var sizeX=640;
+			var sizeY=480;
+			var currGrados=0;
+			var sizeBarra=0;
+			var sepBarra=0;
+			var aperturaCamara=40;
+			var color='rgb(255,255,0)';
+		
+			imuData.cab=-imuData.cab; //overrided sign
+			var pasoY=Math.sin(-imuData.cab);
+			var yawStep;
+			viewContext.lineWidth=2;
+			viewContext.save();
+			
+			viewContext.clearRect(0,0,sizeX+200,sizeY+200);
+			
+			
+			viewContext.translate(sizeX/2,sizeY/2);
+			viewContext.rotate(imuData.ala);
+			viewContext.font = '11px sans-serif';
+			viewContext.fillStyle=color;			
+			viewContext.fillText(-trunc(imuData.cab*toDeg), sizeBarra+150,sepBarra-10);
+			for (currGrados=(90-trunc(imuData.cab*toDeg));currGrados>=-90;currGrados--){
+				if (((currGrados%10)==0)){
+				
+					sizeBarra=50+(Math.abs(currGrados)/2);					
+					sepBarra=(-currGrados-imuData.cab*toDeg)*6;
+					linea(viewContext, -sizeBarra,sepBarra,sizeBarra,sepBarra,color);
+					
+					viewContext.fillText(currGrados, sizeBarra,sepBarra-10);
+				}	
+			}
+			sepBarra=240/aperturaCamara;
+			yawStep=parseFloat('0.'+(trunc(imuData.gin*toDeg)+'').split(".")[1]);
+			for(currGrados=trunc(imuData.gin*toDeg);currGrados>=-aperturaCamara+trunc(imuData.gin*toDeg);currGrados--){
+				if (((currGrados%10)==0)){		
+					linea(viewContext, yawStep*sepBarra,20,yawStep*sepBarra,30,color);					
+					viewContext.fillText(currGrados, yawStep*sepBarra,15);
+				}
+				yawStep--;
+			}
+			yawStep=-parseFloat('0.'+(trunc(imuData.gin*toDeg)+'').split(".")[1]);
+			for(currGrados=trunc(imuData.gin*toDeg);currGrados<=aperturaCamara+trunc(imuData.gin*toDeg);currGrados++){
+				if (((currGrados%10)==0)){		
+					linea(viewContext, yawStep*sepBarra,20,yawStep*sepBarra,30,color);					
+					viewContext.fillText(currGrados, yawStep*sepBarra,15);
+				}
+				yawStep++;
+			}			
+			linea(viewContext, -150,0,-130,0,color);
+			linea(viewContext, 130,0,150,0,color);
+			
+			linea(viewContext, -50,0,-15,0,color);
+			linea(viewContext, -15,0,0,15,color);
+			linea(viewContext, 0,15,15,0,color);
+			linea(viewContext, 15,0,50,0,color);
+			
+			linea(viewContext, 0,-230,-10,-210,color);
+			linea(viewContext, 0,-230,10,-210,color);
+			viewContext.fillText(trunc(imuData.ala*toDeg), -5,-200);
+			viewContext.restore();
+
+		}
+		function statusColor(value, min){
+			if (value=='N/A'){
+				return 'orange';
+			}
+			if (value<min*1.05){
+			
+				return '#FF0000';
+			}else{
+				return 'green';
+			}
+			return 'green';
+		}
+		function bateria(analogVal){
+			var result=0;
+			result=Math.round(batteryFactor*analogVal*100)/100;
+			if (result==0){
+				result='N/A';
+			}
+			
+			return result;
+		}
+		function corriente(analogVal){
+			var result=0;
+			result=Math.round(amperageFactor*analogVal*100)/100;
+			//if (result==0){
+			//	result='AC ';
+			//}
+			
+			return result;
+		}
+		function motorBar(number, power, maxpower,size){
+			var el='motor'+number;
+			var elB='motorBorder'+number;
+			var elV='motorValue'+number;
+
+			if (power==0){c="grey";}
+			if (power>0){c="green";}
+			if (power>=(maxpower-(maxpower/10))){c="red";}
+			
+			$(el).setStyle({borderColor: c ,width: size +'px'});
+			$(elB).setStyle({width: ((power*size)/maxpower)+'px',backgroundColor: c  });
+			$(elV).setStyle({width: size +'px'}).update(power+"/"+maxpower);
+
+		}	
+		function updatePanel(panelControl){
+			var buttomcolor='black';
+			var al=0;
+			if (arrayData[7]==1) {buttomcolor='green';}			$('esc').setStyle({backgroundColor: buttomcolor });	buttomcolor='black';
+			if (arrayData[15]>=1){clearInterval(intervalCPU);buttomcolor='red';al=1;$('cpu').setStyle({color: 'orange'});intervalCPU=setInterval('cpuOK()',100000)}		
+																$('cpu').setStyle({backgroundColor: buttomcolor });	buttomcolor='black';	
+			if (rcv==1){rcv=0;buttomcolor='green';}				$('rcv').setStyle({backgroundColor: buttomcolor });	buttomcolor='black'; setTimeout('apagarRcv()',100);
+
+            debugText=snd;
+			if (snd<20){snd=20;buttomcolor='green';}			$('snd').setStyle({backgroundColor: buttomcolor });	buttomcolor='black'; 
+			if (bumper0==1){buttomcolor='#81DAF5';}				$('bp0').setStyle({backgroundColor: buttomcolor });	buttomcolor='black';
+			if (bumper1==1){buttomcolor='#81DAF5';}				$('bp1').setStyle({backgroundColor: buttomcolor });	buttomcolor='black';
+			if (statusGPS>=1){buttomcolor='green';}
+			if (statusGPS<0){buttomcolor='red';}            	$('gps').setStyle({backgroundColor: buttomcolor });	buttomcolor='black';
+			if (statusGPS>1){
+				buttomcolor='green';
+			}
+			$('waas').setStyle({backgroundColor: buttomcolor });buttomcolor='black';
+			buttomcolor=statusColor(batt,minVoltage);
+			if (batt<minVoltage){
+				al=1;
+				mensajeConsola("PELIGRO-> Batt UNDERVOLT");
+				playSound(battalarmtrack);
+			}else{
+				stopSound(battalarmtrack);
+			}
+																$('bat').setStyle({backgroundColor: buttomcolor });buttomcolor='black';$('bat').update(batt);
+			
+			if (failsafe>0){
+				buttomcolor='red';al=1;
+				playSound(masteralarmtrack);
+				mensajeConsola("PELIGRO-> FAILSAFE disparado. Planos a 0º. IMU no está recibiendo órdenes del mando");
+			}else{
+				stopSound(masteralarmtrack);
+			}
+																$('fsf').setStyle({backgroundColor: buttomcolor });	buttomcolor='black';
+			if (autopilot>0){
+					buttomcolor='green';
+					if(statusGPS<1){
+						buttomcolor='red';al=1;						
+					}
+			}	
+																$('aut').setStyle({backgroundColor: buttomcolor });	buttomcolor='black';
+					
+			if(al==1){buttomcolor='red';}						$('mst').setStyle({backgroundColor: buttomcolor });	buttomcolor='black';
+
+            
+            var target_head=(head_hold>>>1);
+            var current_head=(head_hold<<31)>>>31;
+            
+            buttomcolor='red';
+            if((target_head===1)&&(current_head===1)){buttomcolor='#fce73f';}
+            if((target_head===1)&&(current_head===0)){buttomcolor='#ee9800';}
+            
+            if((target_head===2)&&(current_head===2)){buttomcolor='green';}
+            if((target_head===2)&&(current_head===0)){buttomcolor='#9eeb5f';}
+            
+			if(head_hold==1){buttomcolor='blue';}				$('mag').setStyle({backgroundColor: buttomcolor });	buttomcolor='black';
+			
+			if(ESC==1){
+			}
+		}
+		function drawMotors(arrayData){
+			var baseArray=10
+			var btnStatus=0;
+            if (ESC==1){
+                btnStatus=2;
+            }  
+			for (ac=0;ac<4;ac++){
+				currMotor=arrayData[ac+baseArray];
+				motorBar(ac, currMotor, 512,175); 
+           
+				if (((currMotor<140)&&(currMotor>0))||(failsafe!=0)){
+    				btnStatus=1;
+    			}
+            
+			}
+            
+            return btnStatus;
+
+			
+		}
+
+	
+		function btnCtrl(vesc){			
+			if(vesc==0){
+                $('toggleESC').disabled=false;
+				$('toggleESC').value="Encender";
+				$('toggleESC').setStyle({backgroundColor:'#0080FF'});
+				$('calibrateESC').disabled=false;
+				$('calibrateESC').setStyle({backgroundColor:'#0080FF'});
+			}
+            if (vesc==1){
+                $('toggleESC').disabled=false;
+				$('toggleESC').value="Apagar";
+				$('calibrateESC').disabled=true;
+				$('toggleESC').setStyle({backgroundColor:'red'});
+				$('calibrateESC').setStyle({backgroundColor:'grey'});
+			}
+            if(vesc==2){
+                $('toggleESC').disabled=true;
+				$('toggleESC').value="En vuelo";
+				$('calibrateESC').disabled=true;
+				$('toggleESC').setStyle({backgroundColor:'grey'});
+				$('calibrateESC').setStyle({backgroundColor:'grey'});            
+            }
+
+		}
+	
+		function toggleIMU(){
+			if (lockExperimental==1){return 0;}
+			if(showIMU==0){
+				showIMU=1;				
+				arco(vstatic,320,240,230,220*toRad,-40*toRad, false, 'rgb(255,255,0)');
+				arco(vstatic,320,220,230,140*toRad,40*toRad, true , 'rgb(255,255,0)');
+				$('hud').setStyle({backgroundColor: 'green'});
+				
+			}else{				
+				showIMU=0;
+				vstatic.clearRect(0,0,640,480);
+				view.clearRect(0,0,640,480);
+				$('hud').setStyle({backgroundColor: 'black'});
+			}
+		}
+		function toggleDBG(){
+			if(showDebug==0){
+				showDebug=1;
+				$('debugCol').setStyle({display: 'block'});
+				$('dbg').setStyle({backgroundColor: 'green'});
+			}else{
+				
+				showDebug=0;
+				$('debugCol').setStyle({display: 'none'});
+				$('dbg').setStyle({backgroundColor: 'black'});
+			}
+		}
+		function toggleLCK(){
+			if(lockExperimental==1){
+				lockExperimental=0;
+				$('lck').setStyle({backgroundColor: 'black'});
+			}else{
+				lockExperimental=1;
+				showIMU=0;
+				$('lck').setStyle({backgroundColor: 'orange'});
+			}
+		}
+		function toggleMAG(){
+			if(head_hold===2){
+				head_hold=1;				
+			}else{
+				head_hold=2;				
+			}
+			query('l'+(head_hold*1000000));
+		}
+		
+		function clickGPS(){
+			if (lockExperimental==1){return 0;}
+			mouseclickGPS.latitud=mousemoveGPS.latitud;
+			mouseclickGPS.longitud=mousemoveGPS.longitud;
+			clickGPSPanelX=moveGPSPanelX;
+			clickGPSPanelY=moveGPSPanelY;			
+			query('U1');
+			query('GGZ'+mouseclickGPS.latitud+'Z'+mouseclickGPS.longitud);
+			mensajeConsola("Enviadas coordenadas GPS "+mouseclickGPS.latitud+'Z'+mouseclickGPS.longitud);
+		}
+		function mouseoverGPS(e){
+			if (lockExperimental==1){
+				return 0;
+			}
+			var color='rgb(255,255,40)';
+			var relX=e.clientX-$('dgps').cumulativeOffset()[0];
+			var relY=Math.abs($('dgps').cumulativeOffset()[1]-e.clientY);
+			
+			moveGPSPanelX=relX;
+			moveGPSPanelY=relY;
+			
+			mousemoveGPS.latitud=(inGPS.latitud+(moveGPSPanelY-scaleView)*scaleGPS).toFixed(6);
+			mousemoveGPS.longitud=(inGPS.longitud+(moveGPSPanelX-scaleView)*scaleGPS).toFixed(6);
+			
+			var distLat=((mousemoveGPS.latitud-inGPS.latitud)*111120).toFixed(2);
+			var distLong=((mousemoveGPS.longitud-inGPS.longitud)*111120).toFixed(2);
+			var distReal=(Math.sqrt(distLat*distLat+distLong*distLong)).toFixed(2);
+			
+			
+			vdgps.clearRect(0,0,gpsSizeView,gpsSizeView);
+			linea(vdgps, scaleView, scaleView, relX, relY, 'rgba(40,40,40,5)');
+			cruz(vdgps, relX, relY, 10, color);
+			vdgps.fillStyle='rgb(255,255,255)';
+			vdgps.fillText(distReal+'m',(relX+scaleView)/2,(relY+scaleView)/2);			
+		}
+		function mouseoutGPS(e){
+			vdgps.clearRect(0,0,140,140);
+		}
+
+		function initBrujula(){
+			var flechaColor='rgb(0,255,0)';
+            var flechaStroke='white';
+			vbrujula.clearRect(0,0,140,140);
+			vbrujula.save();
+			vbrujula.translate(70,70);
+			
+			//vbrujula.rotate(yaw);
+			
+			vbrujula.beginPath();
+			vbrujula.lineWidth = 2;	
+			vbrujula.strokeStyle=flechaColor;
+			vbrujula.moveTo(0,-40);
+			vbrujula.lineTo(0,0);
+			
+			vbrujula.closePath();
+			vbrujula.stroke();			
+			triangulo(vbrujula,0,0,8,20,flechaColor);
+			
+			vbrujula.fillStyle=flechaColor;
+			//vbrujula.fillText((yaw*toDeg).toFixed(0),-20 ,-20);
+			vbrujula.restore();			
+
+			
+			vtargetyaw.clearRect(0,0,140,140);
+			
+			vtargetyaw.save();
+			vtargetyaw.translate(70,70);			
+			//vtargetyaw.rotate(targetYaw);
+			
+			vtargetyaw.beginPath();
+			vtargetyaw.lineWidth = 2;	
+			vtargetyaw.strokeStyle='white';
+			vtargetyaw.moveTo(0,-50);
+			vtargetyaw.lineTo(0,0);
+			
+			vtargetyaw.closePath();
+			vtargetyaw.stroke();
+			
+			
+			//vtargetyaw.fillStyle=flechaStroke;
+			triangulo(vtargetyaw,0,0,10,40,flechaStroke);
+			//vtargetyaw.fillText((targetYaw*toDeg).toFixed(0),-20 ,-30);
+			vtargetyaw.restore();
+			
+		}	
+		function drawBrujula(yaw){
+			vgps.clearRect(0,0,200,200);
+			var localX=(((targetGPS.longitud-inGPS.longitud)/scaleGPS)+scaleView).toFixed(0);
+			var localY=(((targetGPS.latitud-inGPS.latitud)/scaleGPS)+scaleView).toFixed(0);
+			//$('gpsTxt').update(targetGPS.latitud+' '+targetGPS.longitud+' '+ localX+' '+localY);
+			cruz(vgps,localX ,localY,450,'rgb(100,100,100)');
+			divRotation('vbrujula', yaw);
+            var suff="º";
+            if((head_hold>>>1)==1){suff="º/sec"}
+            $('gradosBrujula').update(Math.round(yaw*toDeg)+suff);
+		
+		}
+		function drawTargetYaw(targetYaw, hold){
+			if (hold==1){	
+				//$('targetYaw').setStyle({visibility:'hidden'});
+				$('targetYaw').setStyle({color:'orange'});
+                $('brujulaNorte').update('0');
+                $('brujulaEste').update('45');
+                $('brujulaOeste').update('45').setStyle({marginLeft:'-5px'});
+                $('brujulaSur').update('90').setStyle({marginLeft:'-5px'});
+                
+			}
+			else{
+				//$('targetYaw').setStyle({visibility:'inherit'});
+                $('targetYaw').setStyle({color:'white'});
+                $('brujulaNorte').update('N');
+                $('brujulaEste').update('E');
+                $('brujulaOeste').update('O').setStyle({marginLeft:'0px'});
+                $('brujulaSur').update('S').setStyle({marginLeft:'0px'});                
+			}
+            divRotation('targetYaw', targetYaw);
+		}
+		function drawDebug(trgt,a, freetext){
+			var o="";
+			var ac=0;
+			o="<table style='border:0px'>";
+			for(ac=0;ac<a.length;ac++){
+				o=o+"<tr><td>["+ac+"]</td><td>"+a[ac]+"</td></tr>";
+			}
+			if (freetext!=""){
+				o=o+"<tr><td>[F]</td><td style='color:grey'>"+freetext+"</td></tr>";
+			}	
+			o=o+"</table>"
+			trgt.update(o);
+		}
+        function initMiniIMU(){
+			vcraft.clearRect(0,0,140,140);
+
+
+			//vcraft.save();
+			vcraft.translate(70,70);
+			//
+        			
+            		vcraft.clearRect(0,60,80,10);                
+			vcraft.beginPath();
+			vcraft.lineWidth = 1;	
+			vcraft.strokeStyle='grey';
+
+            
+
+			vcraft.moveTo(0,-200);
+			vcraft.lineTo(0,200);
+			vcraft.moveTo(-200,0);
+			vcraft.lineTo(200,0);			
+			vcraft.closePath();
+			vcraft.stroke();			
+			
+			
+			vcraft.strokeStyle='black';
+			vcraft.lineWidth = 4;
+			vcraft.beginPath();
+			vcraft.moveTo(30, 0);
+			vcraft.lineTo(40,0);
+			vcraft.moveTo(30, 0);
+			vcraft.arc(0,0,10,0,Math.PI, 0);
+			vcraft.moveTo(-10, 0);
+			vcraft.lineTo(-40,0);
+			vcraft.moveTo(0, 0);
+			vcraft.lineTo(0,10);
+			
+			vcraft.closePath();
+			vcraft.stroke();	
+
+			//vcraft.restore();        
+        }
+		function drawMiniIMU(alabeo,cabeceo){
+			var pxdiff=-cabeceo*70;
+			var topt=-(72+pxdiff);
+			var larg=70+pxdiff;
+            
+			topt=topt+'px';
+			larg=larg+'px';
+			$('tierra').setStyle({top:topt});
+			$('tierra').setStyle({height:larg});
+            
+            divRotation('craft', alabeo);
+
+			//vcraft.rotate(alabeo);
+			$('craftCabeceo').update((cabeceo*toDeg).toFixed(0));
+			$('craftAlabeo').update((alabeo*toDeg).toFixed(0));
+		}
+		 
+		function drawPID(c, midY,stepX, cvalue, tvalue, pidObj){
+		
+			
+			/*if (pidObj.Xcurr>500){
+				c.clearRect(0,0,640,300);
+				initPID(c, midY);
+				pidObj.Xcurr=0;
+				pidObj.Xtarget=0;
+                pidObj.Xerr=0;
+			}*/
+
+            var Xtotal=500;
+            var Ytotal=(midY*2);         
+            
+            initPID(c, midY);            
+            var xfixed=Xtotal-stepX;
+            var imageData = c.getImageData(stepX, 0, Xtotal, Ytotal);
+            c.clearRect(xfixed, 0, Xtotal, Ytotal);
+            c.putImageData(imageData, 0, 0);
+            pidObj.Xcurr=xfixed;
+            pidObj.Xtarget=xfixed;
+            pidObj.Xerr=xfixed;
+            
+			c.strokeStyle='blue';
+			
+			c.beginPath();
+			c.moveTo(pidObj.Xcurr,pidObj.Ycurr+midY);
+			pidObj.Xcurr=pidObj.Xcurr+stepX;
+			pidObj.Ycurr=((-cvalue*midY)/100)*canvasPIDGain;
+			c.lineTo(pidObj.Xcurr,(pidObj.Ycurr+midY));			
+			c.closePath();
+			c.stroke();
+			
+			c.strokeStyle='red';
+			
+			c.beginPath();
+			c.moveTo(pidObj.Xtarget,pidObj.Ytarget+midY);
+			pidObj.Xtarget=pidObj.Xtarget+stepX;		
+			pidObj.Ytarget=((-tvalue*midY)/100)*canvasPIDGain;
+			c.lineTo(pidObj.Xtarget,(pidObj.Ytarget+midY));			
+			c.closePath();
+			c.stroke();	
+            c.strokeStyle='green';
+			
+			c.beginPath();
+			c.moveTo(pidObj.Xerr,pidObj.Yerr+midY);
+			pidObj.Xerr=pidObj.Xerr+stepX;		
+			pidObj.Yerr=pidObj.Ycurr-pidObj.Ytarget;
+			c.lineTo(pidObj.Xerr,(pidObj.Yerr+midY));			
+			c.closePath();
+			c.stroke();	
+			
+		}
+		function initPID(c, midY){
+			
+			c.strokeStyle='black';
+			c.beginPath();
+			c.moveTo(0,midY);
+			
+			c.lineTo(640,midY);
+			c.fillText("0º",0,midY-3);
+			
+			c.closePath();
+			c.stroke();	
+			
+			c.strokeStyle='grey';
+			c.beginPath();
+			c.moveTo(0,(midY-1)*2);
+			c.lineTo(640,(midY-1)*2);
+			c.fillText((-90/canvasPIDGain).toFixed(2)+"º",0,(midY*2)-3);
+			
+			c.moveTo(0,1);
+			c.lineTo(640,1);
+			c.fillText((90/canvasPIDGain).toFixed(2)+"º",0,10);
+			c.closePath();
+			c.stroke();	
+			
+			c.lineWidth=1;
+			c.beginPath();
+			
+			c.moveTo(0,midY*1.5);
+			c.lineTo(640,midY*1.5);	
+			c.fillText((-45/canvasPIDGain).toFixed(2)+"º",0,(midY*1.5)-3);
+			c.moveTo(0,midY/2);
+			c.lineTo(640,midY/2);
+			c.fillText((45/canvasPIDGain).toFixed(2)+"º",0,(midY/2)-3);		
+			c.closePath();
+			c.stroke();			
+		}
+		function togglePID(){
+			if(pid==0){
+				pid=1;
+				
+				}
+			else{
+				pid=0;
+		
+				$('PIDcontainer').setStyle({display:'none'});
+				pidAla = new PID(0,0,0,0);
+				pidCab = new PID(0,0,0,0);
+				pidGin = new PID(0,0,0,0);
+
+				
+			}
+		}
+		function toggleTele(){
+			if(divTele==0){divTele=1;
+				$('telemetriaRaw').setStyle({display: 'block'});
+				}else{
+				divTele=0;
+				$('telemetriaRaw').setStyle({display: 'none'});
+				
+			}
+		}
+		function cambiarResolicion(nuevoVal){
+			gain=canvasPIDGain;
+			gain=gain+nuevoVal;
+			if(gain<1){
+				gain=1;
+			}
+			canvasPIDGain=gain;
+			$('resActual').update(gain);
+			valabeo.clearRect(0,0,640,300);
+			vcabeceo.clearRect(0,0,640,300);
+			vguinnada.clearRect(0,0,640,300);			
+			initPID(valabeo, 75);
+			initPID(vcabeceo, 75);
+			initPID(vguinnada, 75);
+
+			pidAla.Xcurr=0;
+			pidAla.Xtarget=0;
+            pidAla.Xerr=0;            
+			pidCab.Xcurr=0;
+			pidCab.Xtarget=0;
+            pidCab.Xerr=0;   
+			pidGin.Xcurr=0;
+			pidGin.Xtarget=0;	
+            pidGin.Xerr=0;  
+			
+		}
+		function mensajeConsola(msg, color){
+			if (msg!=""){
+				if (color!=""){
+					c="color:"+color;
+				}
+				
+				if (msg!=lastConsole){
+					lastConsole=msg;
+					
+					if (msg.indexOf("[info]")>0 && color=="")	 {c="color:green";msg=msg.replace("[info]","");}
+					if (msg.indexOf("[wrn]")>0 && color=="") 	 {c="color:orange";msg=msg.replace("[wrn]","");}
+					if (msg.indexOf("[critical]")>0 && color==""){c="color:red";msg=msg.replace("[critical]","");}
+					
+					dat=new Date();
+					h=(dat.getHours() < 10) ? '0' +dat.getHours() : dat.getHours();
+					m=(dat.getMinutes() < 10) ? '0' +dat.getMinutes() : dat.getMinutes();
+					s=(dat.getSeconds() < 10) ? '0' +dat.getSeconds() : dat.getSeconds();
+					d=h+":"+m+":"+s;
+					$('consola').update($('consola').innerHTML+"<br/><span style='color:white'>"+d+" #</span> <span style='"+c+"'>"+msg+"</span>");
+					$('consola').scrollTop = $('consola').scrollHeight;
+				}
+			}	
+		}
+		function playSound(target){
+            $(target).play();
+			
+		}
+		function stopSound(target){
+            $(target).pause();
+		}
+        
+        function pos(val){
+            if(val<0){return 0;}
+            return val;
+        }
+        function drawRaw(x,y,z){
+            var max=155;
+
+
+            
+            if(global_scale_raw<Math.abs(x)){global_scale_raw=Math.abs(x);}
+            if(global_scale_raw<Math.abs(y)){global_scale_raw=Math.abs(y);}
+            if(global_scale_raw<Math.abs(z)){global_scale_raw=Math.abs(z);}            
+            var vx=(x*max/global_scale_raw);
+            var vy=(y*max/global_scale_raw);
+            var vz=(z*max/global_scale_raw);
+            
+
+            
+            
+            $('rawx').setStyle({height: Math.round(Math.abs(vx))+'px', marginTop: (max-pos(vx))+'px'});
+            $('rawy').setStyle({height: Math.round(Math.abs(vy))+'px', marginTop: (max-pos(vy))+'px'});
+            $('rawz').setStyle({height: Math.round(Math.abs(vz))+'px', marginTop: (max-pos(vz))+'px'});
+            $('rawxtext').update(x);
+            $('rawytext').update(y);
+            $('rawztext').update(z);
+            
+
+        }
+	</script>
+
+</head>
+<body class="generalBody" >
+
+
+
+
+
+<iframe style="display:none" id="icomet" src="/cgi-bin/output" ></iframe>
+<div id="ledPanel"  width="120" class="ledPanel" >
+<span id="esc" class="led3">ESC</span>
+<span id="bat" class="led3">BAT</span>
+<span id="cpu" class="led3">CPU</span>
+<span id="snd" class="led3">SND</span>
+<span id="rcv" class="led3">RCV</span>
+
+<br>
+<span id="gps" class="led3">GPS</span>
+<span id="waas" class="led3">WAAS</span>
+<span id="aut" class="led3">AUT</span>
+<span id="bp0" class="led3">BP0</span>
+<span id="bp1" class="led3">BP1</span>
+<br>
+<span id="fsf" class="led3">FLSF</span>
+<span id="hud" class="led3 link"  onclick="toggleIMU();"><u>HUD</u></span>
+<span id="dbg" class="led3 link"  onclick="toggleDBG();"><u>DBG</u></span>
+<span id="lck" class="led3 link"  onclick="toggleLCK();"><u>LCK</u></span>
+<span id="mag" class="led3 link"  onclick="toggleMAG();"><u>YAW</u></span>
+<br>
+<br>
+
+<span style="display:none;position:relative; left:30%;" id="mst" class="led5"><span style="position:relative; top:20%; ">MASTER<br>ALARM</span></span>
+
+</div>
+<div id="leftPanel"  width="120" style ="position:absolute;  left:10px; top:110px; z-index:103">
+
+	<div   id="motor0" class="motorPanel">
+		<div class="motorBorder" id="motorBorder0"></div>
+	</div>
+	<div class='motorValue' id="motorValue0">N/A</div>
+	<div class='motorLabel' id="motorLabel0">Motor #0</div>
+	
+	<div class="motorPanel"  id="motor1">
+		<div class="motorBorder" id="motorBorder1"></div>
+	</div>
+	<div class='motorValue' id="motorValue1">N/A</div>
+	<div class='motorLabel' id="motorLabel1">Motor #1</div>
+	
+	<div class="motorPanel"  id="motor2">
+		<div class="motorBorder" id="motorBorder2"></div>
+	</div>
+	<div class='motorValue' id="motorValue2">N/A</div>
+	<div class='motorLabel' id="motorLabel2">Motor #2</div>
+	
+	<div class="motorPanel"  id="motor3">
+		<div class="motorBorder" id="motorBorder3"></div>
+	</div>
+	<div class='motorValue' id="motorValue3">N/A</div>
+	<div class='motorLabel' id="motorLabel3">Motor #3</div>	
+</div>
+<canvas id="view" name="view" height="480" width="640" style ="position:absolute;  left:210px; top:50px; z-index:100"></canvas>
+<canvas id="static" name="static" height="480" width="640" style ="position:absolute;  left:210px; top:50px; z-index:1000"></canvas>
+<div    id="gpsTxt" name="gpsTxt" height="140" width="20" style ="position:absolute;  left:15px; top:360px;"></div>
+<canvas id="pgps" name="pgps" height="140" width="140" style ="border:1px dotted;position:absolute;  left:15px; top:380px; z-index:1"></canvas>
+<canvas id="dgps" name="dgps" height="140" width="140" style ="cursor: none;border:1px dotted;position:absolute;  left:15px; top:380px; z-index:99999"></canvas>
+
+
+
+
+<div style="position:absolute;left:15px; top:230px;">
+	<div id="cielo" name="cielo"  style ="height:140px; width:140px;border:1px solid white;position:relative; background:#2E9AFE; " >
+		<div class="flecha-abajo" style="position:relative; top:0px;left:55px;z-index:999999"></div>
+		<div class="flecha-derecha" style="position:relative; top:40px;z-index:999999"></div>
+		<div class="flecha-izquierda" style="position:relative;top:10px;left:125px;z-index:999999;color:black"></div>
+		<span id="craftCabeceo" style="position:relative;top:-12px;left:130px;color:black;z-index:9999999"></span>
+		<span id="craftAlabeo" style="position:relative;top:-78px;left:56px;color:black;z-index:9999999"></span>
+		<div class="flecha-arriba" style="position:relative; top:37px;left:55px;z-index:999999"></div>
+	</div>
+	<div id="tierra" name="tierra" style ="height:70px; width:140px;border:0px;position:relative;  background:#CC6600;top: -72px;left:1px; border-top:1px solid white" ></div>
+</div>
+<canvas id="craft" name="craft" height="140" width="140" style ="border:0px;position:absolute;  left:15px; top:232px;z-index:2;" ></canvas>
+
+<div style ="height:1px; width:40px;border:0px;position:absolute;  left:158px; top:376px;z-index:9;background:red"></div>
+<div id="raw" name="raw"  style ="height:310px; width:40px;border:1px solid #D8D8D8; position:absolute;  left:158px; top:220px;z-index:9;" >
+    
+    <div id="rawx"  style ="margin-top:155px;height:0px;width:12px; background:#5858FA;float:left;margin-left:0px;z-index:12;"><div id="rawxtext" style="color:white;-moz-transform:rotate(90deg);"></div></div>
+    <div id="rawy"  style ="margin-top:155px;height:0px;width:12px; background:#5858FA;float:left;margin-left:1px;z-index:12;"><div id="rawytext" style="color:white;-moz-transform:rotate(90deg);"></div></div>
+    <div id="rawz"  style ="margin-top:155px;height:0px;width:12px; background:#5858FA;float:left;margin-left:1px;z-index:12;"><div id="rawztext" style="color:white;-moz-transform:rotate(90deg);"></div></div>
+</div>
+
+<div id="gradosBrujula" style="position:absolute;left:15px; top:380px;font-size:30px; color:grey; font-family:Courier">N/A</div>
+<div style="position:absolute;left:15px; top:380px;">
+<canvas id="targetYaw" name="targetYaw" height="140" width="140" style ="cursor: none;position:relative; left:1px; top:1px;  z-index:1"></canvas>
+<canvas id="vbrujula" name="vbrujula" height="140" width="140" style ="cursor: none;position:relative;  left:-142px; top:1px; z-index:1"></canvas>
+
+	<div class="flecha-abajo" style="position:relative; top:-142px;left:56px;z-index:999999"></div>
+	<div class="flecha-derecha" style="position:relative; top:-102px;z-index:999999"></div>
+	<div class="flecha-izquierda" style="position:relative;top:-132px;left:126px;z-index:999999;color:black"></div>
+	<span id="brujulaEste"  style="position:relative;top:-154px;left:132px;color:black;z-index:9999999">E</span>
+	<span id="brujulaNorte" style="position:relative;top:-218px;left:58px;color:black;z-index:9999999">N</span>
+	<span id="brujulaSur" style="position:relative;top:-90px;left:47px;color:black;z-index:9999999">S</span>
+	<span id="brujulaOeste" style="position:relative;top:-154px;left:-28px;color:black;z-index:9999999">O</span>
+	<div class="flecha-arriba" style="position:relative; top:-105px;left:56px;z-index:999999"></div>
+</div>
+
+
+<iframe id="imageframe" scrolling="no" src="camara.html" height="480" width="640" style="border:1px solid white; position:absolute;  left:200px; top:50px; z-index:1"></iframe>
+<div id="debugCol" name="debugCol" style="position:absolute;color:white;left:855px;top:50px" ></div>
+<div id="floatMsg" style="position:absolute;top:100px;left:100px;display:none;width:200px;height:100px;background:grey; border:solid 2px black"></div>
+
+
+<input type="button" class="btn" id="toggleESC" value="Encender" onclick="javascript:if(this.value=='Encender'){encender(EnviarActESC);}else{apagar();}">
+<input type="button" class="btn" id="calibrateESC" value="Calibrar ESC" onclick="javascript:calibrar()" />
+<a class="btn h28"  href="/cgi-bin/vconfig.sh" target="_blank" >Configuración<br>Atropos</a>
+<a class="btn h28"  href="http://192.168.251.111" target="_blank" >Configuración<br>Camara IP</a>
+<a class="btn h28"  href="#" id="btnPID" onclick="togglePID();" >Gráficas<br>IMU</a>
+<!--<a class="btn h28"  href="#" id="btnTele" onclick="toggleTele();" >Telemetría<br>en crudo</a>!-->
+<div style="position:absolute;left:855px;top:50px; display:none; width:505px; height:540px; border:1px grey solid; background:gray21; z-index:1" id="PIDcontainer">
+
+<input type="button" class="btn" style="width:20px;height:20px;z-index:2" value="+" id="masResolucion" onClick="javascript:cambiarResolicion(1)"/>
+<input type="button" class="btn" style="width:20px;height:20px;z-index:2" value="-" id="menosResolucion" onClick="javascript:cambiarResolicion(-1)"/>
+<span style="color:white;z-index:2">&nbsp;&nbsp;&nbsp;x<span id="resActual">1</span></span>
+<br/><br/>
+<span style="color:white;z-index:2">Alabeo:</span>
+<canvas id="valabeo" style=" background:white;z-index:7" height="150" width="500"></canvas>
+<span style="color:white;z-index:2">Cabeceo:</span>
+<canvas id="vcabeceo" style=" background:white;z-index:7" height="150" width="500"></canvas>
+<span style="color:white;z-index:2">Guiñada:</span>
+<canvas id="vguinnada" style=" background:white;z-index:7" height="150" width="500"></canvas>
+</div>
+<div id="consola"  style="overflow: auto;position:absolute;left:15px;top:535px;font-family:monospace; font-size:10px; color:#00FF00; width:825px; height:90px; border: 1px solid white; z-index:99999">
+
+</div>
+
+<audio id="masteralarm.ogg"  preload="auto" loop="loop"><source src="masteralarm.ogg" type="audio/ogg" /></audio>
+<audio id="battalarm.ogg"  preload="auto" loop="loop"><source src="battalarm.ogg" type="audio/ogg" /></audio>
+
+
+
+
+
+
+<!--<div id="telemetriaRaw" style="display:none;overflow: auto;position:absolute;left:200px;top:435px;font-family:monospace;width:635px; background:white; color:black; border:1px yellow solid; height:100px;z-index:999999"></div>
+!-->
+
+ <script type='text/javascript'>
+	
+	
+	mensajeConsola("Iniciando objetos");
+	var view=getCanvas('view');
+	var vstatic=getCanvas('static');   
+	var vtargetyaw=getCanvas('targetYaw');
+	var vcraft=getCanvas('craft');
+	
+	var timeoutRCV=0;
+	var timeoutCOMET=0;
+	var timeoutCAMERA=0;
+	var vgps=getCanvas('pgps');
+	var vdgps=getCanvas('dgps');
+	var vbrujula=getCanvas('vbrujula');
+	
+	var valabeo=getCanvas('valabeo');
+	var vcabeceo=getCanvas('vcabeceo');
+	var vguinnada=getCanvas('vguinnada');
+	
+	
+	
+	
+	setCanvasProperties(vstatic);
+	setCanvasProperties(view);
+
+	setFlatCanvasProperties(valabeo);
+	setFlatCanvasProperties(vcabeceo);
+	setFlatCanvasProperties(vguinnada);
+	
+	setFlatCanvasProperties(vgps);
+	setFlatCanvasProperties(vdgps);
+	setFlatCanvasProperties(vbrujula);
+	setFlatCanvasProperties(vtargetyaw);
+	setFlatCanvasProperties(vcraft);
+
+	initPID(valabeo,75);
+	initPID(vcabeceo,75);
+	initPID(vguinnada,75);
+	
+    
+    
+  initMiniIMU();
+	initBrujula();
+	
+	$('dgps').addEventListener('click', clickGPS, false);
+	$('dgps').addEventListener('mousemove', mouseoverGPS, false);
+	$('dgps').addEventListener('mouseout', mouseoutGPS, false);
+	drawBrujula(0);
+	drawTargetYaw(0,1);
+	drawMiniIMU(0,0);
+	$('snd').setStyle({backgroundColor: 'black'});
+	$('hud').setStyle({backgroundColor: 'black'});
+	$('dbg').setStyle({backgroundColor: 'black'});
+	$('lck').setStyle({backgroundColor: 'orange'});
+
+	timeoutCAMERA=setInterval('refreshCamera()', 50000);
+	mensajeConsola("Preparado");
+    
+
+    
+	var comet={
+		  input: function(data){
+			  $('icomet').update('');
+			  if (timeoutRCV>0){clearInterval(timeoutRCV);}	
+			  
+			  rcv=1;
+			  
+			  data=data.replace(" ","");
+			  //$('telemetriaRaw').update($('telemetriaRaw').innerHTML+"<br>"+data);
+			  if (data=="EXIT_INTERPROCESS"){
+				clearInterval(timeoutRCV);
+				mensajeConsola("Recibido comando de fin de proceso. Telemetría detenida");
+			  }else{
+			  
+				  arrayData=data.split(";");
+				  batt=				bateria		(arrayData[0]);	
+				  sonar=			parseFloat  (arrayData[1]);
+				  inIMU.ala=		parseFloat	(arrayData[2]);
+				  inIMU.cab=		parseFloat	(arrayData[3]);
+				  inIMU.gin=		parseFloat	(arrayData[4]);
+				  ESC=				parseInt	(arrayData[7]);
+				  bumper0=			parseInt	(arrayData[8]);
+				  bumper1=			parseInt	(arrayData[9]);
+				  statusGPS=					 arrayData[16];	
+				  inGPS.latitud=	parseFloat	(arrayData[17]);
+				  inGPS.longitud=	parseFloat	(arrayData[18]);	  	
+				  targetGPS.latitud=parseFloat	(arrayData[19]);
+				  targetGPS.longitud=parseFloat	(arrayData[20]);	 
+				  failsafe=			parseInt	(arrayData[21]);
+				  autopilot=		parseInt	(arrayData[22]);
+				  inTARGET.gin=		parseFloat	(arrayData[23]);
+				  head_hold=		parseInt	(arrayData[24]);
+				  inTARGET.ala=		parseFloat	(arrayData[25]);
+				  inTARGET.cab=		parseFloat	(arrayData[26]);
+				  msgout=						 arrayData[27].replace("/\r/g","").replace("/\n/g","");
+				  snd=				parseInt    (arrayData[28]);	
+				  
+				  //
+				  //QUITAR
+				  //
+				  if(parseInt(arrayData[10])>50){
+				  	//alert(data);
+				  }
+				  
+				  
+				  mensajeConsola(msgout,'');
+				  if(showIMU){
+				  
+					drawIMU(inIMU,view,vstatic);
+				   }
+				  if (showDebug){
+					drawDebug($('debugCol'),arrayData,debugText);
+				  }else{
+						$('debugCol').update("");
+				  }
+				  updatePanel($('ledPanel'));
+				  drawMotors( arrayData);
+				  drawMiniIMU(inIMU.ala,inIMU.cab);
+                  btnCtrl(drawMotors(arrayData));
+				  
+				  drawTargetYaw(inTARGET.gin, head_hold>>>1);
+				  drawBrujula(inIMU.gin);
+				  
+				  drawRaw(arrayData[29],arrayData[30],arrayData[31]);
+				  if(pid==1){
+					$('PIDcontainer').setStyle({display:'block'});
+					drawPID(valabeo, 75,3,  inIMU.ala*toDeg, inTARGET.ala*toDeg, pidAla); 
+					drawPID(vcabeceo, 75,3,  inIMU.cab*toDeg, inTARGET.cab*toDeg, pidCab);
+					drawPID(vguinnada, 75,3,  (inIMU.gin*toDeg)/2,(inTARGET.gin*toDeg)/2, pidGin); 
+				  }
+				  timeoutRCV=setInterval('falloRcv()',3000);
+			  }	  
+		}
+	 }	
+
+	if (window.addEventListener)
+		window.addEventListener('DOMMouseScroll', rueda, false);
+	window.onmousewheel = document.onmousewheel = rueda;	
+	
+</script>
+
+
+
+</body>
+</html>	
