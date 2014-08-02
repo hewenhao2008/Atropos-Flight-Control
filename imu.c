@@ -20,6 +20,7 @@
 #include <stdlib.h>
 //#include <linux/watchdog.h>
 
+
 #define I2C0 "/dev/i2c-0"
 #define I2C1 "/dev/i2c-1"
 #define SERIE "/dev/ttyS0"
